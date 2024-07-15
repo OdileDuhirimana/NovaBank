@@ -1,0 +1,36 @@
+services:
+  nova-bank-db:
+    image: postgres:16
+    container_name: nova-bank-db
+    environment:
+      POSTGRES_DB: nova_bank
+      POSTGRES_USER: nova_user
+      POSTGRES_PASSWORD: nova_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nova_user -d nova_bank"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nova-bank-app:
+    build: .
+    container_name: nova-bank-app
+    ports:
+      - "8081:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://nova-bank-db:5432/nova_bank
+      SPRING_DATASOURCE_USERNAME: nova_user
+      SPRING_DATASOURCE_PASSWORD: nova_password
+      JWT_SECRET: ZmFrZXNlY3JldGZvcmtleWJhc2U2NA==
+      JWT_EXPIRATION_MS: 86400000
+    depends_on:
+      nova-bank-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: nova-bank-core
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/nova_bank
+    username: postgres
+    password: postgres
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc.lob.non_contextual_creation: true
+    show-sql: false
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,loggers,env,threaddump,heapdump
+  endpoint:
+    health:
+      show-details: always
+
+security:
+  jwt:
+    secret: ZmFrZXNlY3JldGZvcmtleWJhc2U2NA==
+    expiration-ms: 86400000
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+
+app:
+  bootstrap:
+    historical:
+      enabled: false
+      months: 3
+      users: 3
+      tx-per-week: 6
