@@ -42,8 +42,8 @@ public class AdminController {
     @GetMapping("/audit")
     @PreAuthorize("hasAnyRole('ADMIN','AUDITOR')")
     @SecurityRequirement(name = "bearerAuth")
-    public ResponseEntity<Page<AuditLog>> auditLogs(@RequestParam(defaultValue = "0") int page,
-                                                    @RequestParam(defaultValue = "20") int size) {
+    public ResponseEntity<Page<AuditLog>> auditLogs(@RequestParam(name = "page", defaultValue = "0") int page,
+                                                    @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(auditLogRepository.findAll(PageRequest.of(page, size)));
     }
 
@@ -59,8 +59,8 @@ public class AdminController {
     @GetMapping("/fraud")
     @PreAuthorize("hasAnyRole('ADMIN','AUDITOR')")
     @SecurityRequirement(name = "bearerAuth")
-    public ResponseEntity<Page<FraudLog>> fraudLogs(@RequestParam(defaultValue = "0") int page,
-                                                    @RequestParam(defaultValue = "20") int size) {
+    public ResponseEntity<Page<FraudLog>> fraudLogs(@RequestParam(name = "page", defaultValue = "0") int page,
+                                                    @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(fraudLogRepository.findAll(PageRequest.of(page, size)));
     }
 }
