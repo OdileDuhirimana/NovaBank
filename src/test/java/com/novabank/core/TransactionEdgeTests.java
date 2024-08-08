@@ -36,13 +36,14 @@ class TransactionEdgeTests {
     private TransactionService transactionService;
 
     private User bootstrapUser() {
+        String unique = "bob_" + System.nanoTime();
         RegisterRequest rr = new RegisterRequest();
-        rr.setUsername("bob");
-        rr.setEmail("bob@example.com");
+        rr.setUsername(unique);
+        rr.setEmail(unique + "@example.com");
         rr.setPassword("password123");
         rr.setRole(Role.CUSTOMER);
         userService.register(rr);
-        return userRepository.findByUsername("bob").orElseThrow();
+        return userRepository.findByUsername(unique).orElseThrow();
     }
 
     @Test

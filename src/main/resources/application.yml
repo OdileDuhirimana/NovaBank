@@ -30,7 +30,7 @@ management:
 
 security:
   jwt:
-    secret: ZmFrZXNlY3JldGZvcmtleWJhc2U2NA==
+    secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
     expiration-ms: 86400000
 
 springdoc:
