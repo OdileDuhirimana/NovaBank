@@ -49,6 +49,7 @@ public class AccountService {
         Account account = accountRepository.findByAccountNumber(accountNumber)
                 .orElseThrow(() -> new IllegalArgumentException("Account not found"));
         requireOwner(user, account);
+        requireActive(account);
         account.setBalance(account.getBalance().add(amount));
         accountRepository.save(account);
 
@@ -69,6 +70,7 @@ public class AccountService {
         Account account = accountRepository.findByAccountNumber(accountNumber)
                 .orElseThrow(() -> new IllegalArgumentException("Account not found"));
         requireOwner(user, account);
+        requireActive(account);
         if (account.getBalance().compareTo(amount) < 0) {
             throw new IllegalArgumentException("Insufficient funds");
         }
@@ -87,9 +89,32 @@ public class AccountService {
         return new AccountResponse(account.getAccountNumber(), account.getBalance(), account.isActive());
     }
 
+    @Transactional
+    public AccountResponse updateAccountStatus(User actor, String accountNumber, boolean active, String reason) {
+        Account account = accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new IllegalArgumentException("Account not found"));
+
+        account.setActive(active);
+        accountRepository.save(account);
+
+        String action = active ? "ACCOUNT_ACTIVATE" : "ACCOUNT_FREEZE";
+        String details = (reason == null || reason.isBlank())
+                ? "Account status updated to " + (active ? "active" : "inactive")
+                : "Account status updated to " + (active ? "active" : "inactive") + ": " + reason;
+        auditService.log(actor.getUsername(), action, accountNumber, null, details);
+
+        return new AccountResponse(account.getAccountNumber(), account.getBalance(), account.isActive());
+    }
+
     private void requireOwner(User user, Account account) {
         if (!account.getUser().getId().equals(user.getId())) {
             throw new SecurityException("Forbidden: not your account");
+        }
+    }
+
+    private void requireActive(Account account) {
+        if (!account.isActive()) {
+            throw new IllegalArgumentException("Account is inactive");
         }
     }
 

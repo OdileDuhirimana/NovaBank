@@ -42,6 +42,12 @@ public class TransactionService {
         if (!from.getUser().getId().equals(user.getId())) {
             throw new SecurityException("Forbidden: not your source account");
         }
+        if (!from.isActive()) {
+            throw new IllegalArgumentException("Source account is inactive");
+        }
+        if (!to.isActive()) {
+            throw new IllegalArgumentException("Destination account is inactive");
+        }
         BigDecimal amount = request.getAmount();
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Amount must be positive");
