@@ -1,6 +1,8 @@
 package com.novabank.core.exception;
 
 import com.novabank.core.dto.common.ErrorResponse;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -45,6 +47,16 @@ public class GlobalExceptionHandler {
         ErrorResponse body = ErrorResponse.builder()
                 .code("FORBIDDEN")
                 .message(ex.getMessage())
+                .timestamp(OffsetDateTime.now())
+                .build();
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
+
+    @ExceptionHandler({AccessDeniedException.class, AuthorizationDeniedException.class})
+    public ResponseEntity<ErrorResponse> handleAccessDenied(Exception ex) {
+        ErrorResponse body = ErrorResponse.builder()
+                .code("FORBIDDEN")
+                .message("Access denied")
                 .timestamp(OffsetDateTime.now())
                 .build();
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
