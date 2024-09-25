@@ -1,6 +1,7 @@
 package com.novabank.core.controller;
 
 import com.novabank.core.dto.transaction.TransactionResponse;
+import com.novabank.core.dto.transaction.TransactionSummaryResponse;
 import com.novabank.core.dto.transaction.TransferRequest;
 import com.novabank.core.model.User;
 import com.novabank.core.service.TransactionService;
@@ -53,6 +54,28 @@ public class TransactionController {
                         user, startDate, endDate, minAmount, maxAmount, page, size, sort
                 )
         );
+    }
+
+    @Operation(summary = "Get transaction cashflow summary for the current user")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Summary returned",
+                    content = @Content(schema = @Schema(implementation = com.novabank.core.dto.transaction.TransactionSummaryResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = com.novabank.core.dto.common.ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Forbidden",
+                    content = @Content(schema = @Schema(implementation = com.novabank.core.dto.common.ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Unauthorized",
+                    content = @Content(schema = @Schema(implementation = com.novabank.core.dto.common.ErrorResponse.class)))
+    })
+    @GetMapping("/summary")
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<TransactionSummaryResponse> summary(
+            @AuthenticationPrincipal User user,
+            @RequestParam(name = "startDate", required = false) String startDate,
+            @RequestParam(name = "endDate", required = false) String endDate,
+            @RequestParam(name = "accountNumber", required = false) String accountNumber
+    ) {
+        return ResponseEntity.ok(transactionService.summarizeUserTransactions(user, startDate, endDate, accountNumber));
     }
 
     @Operation(summary = "Transfer funds between accounts")

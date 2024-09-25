@@ -1,6 +1,7 @@
 package com.novabank.core.service;
 
 import com.novabank.core.dto.transaction.TransactionResponse;
+import com.novabank.core.dto.transaction.TransactionSummaryResponse;
 import com.novabank.core.dto.transaction.TransferRequest;
 import com.novabank.core.model.Account;
 import com.novabank.core.model.TransactionRecord;
@@ -14,10 +15,15 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Comparator;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -168,6 +174,62 @@ public class TransactionService {
         return base;
     }
 
+    @Transactional
+    public TransactionSummaryResponse summarizeUserTransactions(User user, String startDate, String endDate, String accountNumber) {
+        List<TransactionResponse> transactions = listUserTransactionsFiltered(user, startDate, endDate, null, null);
+        Set<String> scopeAccounts = resolveScopeAccounts(user, accountNumber);
+        String scopedAccount = (accountNumber == null || accountNumber.isBlank()) ? null : accountNumber;
+
+        if (scopedAccount != null) {
+            transactions = transactions.stream()
+                    .filter(tx -> scopedAccount.equals(tx.getFromAccount()) || scopedAccount.equals(tx.getToAccount()))
+                    .collect(Collectors.toList());
+        }
+
+        BigDecimal totalCredits = BigDecimal.ZERO;
+        BigDecimal totalDebits = BigDecimal.ZERO;
+        BigDecimal largestCredit = BigDecimal.ZERO;
+        BigDecimal largestDebit = BigDecimal.ZERO;
+        long internalTransferCount = 0;
+        Map<String, BigDecimal> monthlyNet = new TreeMap<>();
+
+        for (TransactionResponse tx : transactions) {
+            boolean fromInScope = tx.getFromAccount() != null && scopeAccounts.contains(tx.getFromAccount());
+            boolean toInScope = tx.getToAccount() != null && scopeAccounts.contains(tx.getToAccount());
+            BigDecimal amount = tx.getAmount();
+
+            if (toInScope && !fromInScope) {
+                totalCredits = totalCredits.add(amount);
+                if (amount.compareTo(largestCredit) > 0) {
+                    largestCredit = amount;
+                }
+                accumulateMonthly(monthlyNet, tx.getOccurredAt(), amount);
+            } else if (fromInScope && !toInScope) {
+                totalDebits = totalDebits.add(amount);
+                if (amount.compareTo(largestDebit) > 0) {
+                    largestDebit = amount;
+                }
+                accumulateMonthly(monthlyNet, tx.getOccurredAt(), amount.negate());
+            } else if (fromInScope) {
+                internalTransferCount++;
+            }
+        }
+
+        return TransactionSummaryResponse.builder()
+                .scopeAccountNumber(scopedAccount)
+                .startDate(startDate)
+                .endDate(endDate)
+                .transactionCount(transactions.size())
+                .internalTransferCount(internalTransferCount)
+                .totalCredits(totalCredits)
+                .totalDebits(totalDebits)
+                .netCashflow(totalCredits.subtract(totalDebits))
+                .largestCredit(largestCredit)
+                .largestDebit(largestDebit)
+                .monthlyNetCashflow(monthlyNet)
+                .build();
+    }
+
     private Comparator<TransactionResponse> buildComparator(String sort) {
         if (sort == null || sort.isBlank()) return null;
         String[] parts = sort.split(",");
@@ -190,5 +252,26 @@ public class TransactionService {
                 throw new IllegalArgumentException("Invalid sort field. Allowed: occurredAt, amount, type");
         }
         return desc ? comp.reversed() : comp;
+    }
+
+    private Set<String> resolveScopeAccounts(User user, String accountNumber) {
+        if (accountNumber == null || accountNumber.isBlank()) {
+            return accountRepository.findByUser(user).stream()
+                    .map(Account::getAccountNumber)
+                    .collect(Collectors.toSet());
+        }
+        Account account = accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new IllegalArgumentException("Account not found"));
+        if (!account.getUser().getId().equals(user.getId())) {
+            throw new SecurityException("Forbidden: not your account");
+        }
+        Set<String> scoped = new HashSet<>();
+        scoped.add(accountNumber);
+        return scoped;
+    }
+
+    private void accumulateMonthly(Map<String, BigDecimal> monthlyNet, Instant occurredAt, BigDecimal delta) {
+        String month = YearMonth.from(occurredAt.atZone(ZoneOffset.UTC)).toString();
+        monthlyNet.merge(month, delta, BigDecimal::add);
     }
 }
