@@ -5,14 +5,20 @@ import com.novabank.core.dto.transaction.TransactionSummaryResponse;
 import com.novabank.core.dto.transaction.TransferRequest;
 import com.novabank.core.model.Account;
 import com.novabank.core.model.TransactionRecord;
+import com.novabank.core.model.TransferIdempotencyRecord;
 import com.novabank.core.model.User;
 import com.novabank.core.repository.AccountRepository;
+import com.novabank.core.repository.TransferIdempotencyRecordRepository;
 import com.novabank.core.repository.TransactionRecordRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -32,11 +38,53 @@ public class TransactionService {
 
     private final AccountRepository accountRepository;
     private final TransactionRecordRepository txRepository;
+    private final TransferIdempotencyRecordRepository transferIdempotencyRecordRepository;
     private final AuditService auditService;
     private final FraudService fraudService;
 
     @Transactional
     public String transfer(User user, TransferRequest request) {
+        return transfer(user, request, null);
+    }
+
+    @Transactional
+    public String transfer(User user, TransferRequest request, String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return performTransfer(user, request);
+        }
+        String normalizedKey = idempotencyKey.trim();
+        if (normalizedKey.length() > 100) {
+            throw new IllegalArgumentException("Idempotency-Key must be at most 100 characters");
+        }
+
+        String requestHash = hashTransferRequest(request);
+        var existing = transferIdempotencyRecordRepository
+                .findByActorUsernameAndIdempotencyKey(user.getUsername(), normalizedKey);
+        if (existing.isPresent()) {
+            validateIdempotentPayload(existing.get(), requestHash);
+            return existing.get().getTransferReference();
+        }
+
+        String reference = performTransfer(user, request);
+        TransferIdempotencyRecord record = new TransferIdempotencyRecord();
+        record.setActorUsername(user.getUsername());
+        record.setIdempotencyKey(normalizedKey);
+        record.setRequestHash(requestHash);
+        record.setTransferReference(reference);
+        try {
+            transferIdempotencyRecordRepository.save(record);
+        } catch (DataIntegrityViolationException ex) {
+            // If another request won the race for the same key, return that reference.
+            TransferIdempotencyRecord raceWinner = transferIdempotencyRecordRepository
+                    .findByActorUsernameAndIdempotencyKey(user.getUsername(), normalizedKey)
+                    .orElseThrow(() -> ex);
+            validateIdempotentPayload(raceWinner, requestHash);
+            return raceWinner.getTransferReference();
+        }
+        return reference;
+    }
+
+    private String performTransfer(User user, TransferRequest request) {
         if (request.getFromAccount().equals(request.getToAccount())) {
             throw new IllegalArgumentException("Cannot transfer to the same account");
         }
@@ -230,6 +278,36 @@ public class TransactionService {
                 .build();
     }
 
+    @Transactional
+    public String buildStatementCsv(
+            User user,
+            String startDate,
+            String endDate,
+            BigDecimal minAmount,
+            BigDecimal maxAmount,
+            String sort
+    ) {
+        List<TransactionResponse> transactions = listUserTransactionsFiltered(user, startDate, endDate, minAmount, maxAmount);
+        Comparator<TransactionResponse> comparator = buildComparator(sort);
+        if (comparator != null) {
+            transactions = transactions.stream().sorted(comparator).collect(Collectors.toList());
+        }
+
+        StringBuilder csv = new StringBuilder();
+        csv.append("reference,type,amount,fromAccount,toAccount,occurredAt,note\n");
+        for (TransactionResponse tx : transactions) {
+            csv.append(csvCell(tx.getReference())).append(',')
+                    .append(csvCell(tx.getType().name())).append(',')
+                    .append(csvCell(tx.getAmount().toPlainString())).append(',')
+                    .append(csvCell(tx.getFromAccount())).append(',')
+                    .append(csvCell(tx.getToAccount())).append(',')
+                    .append(csvCell(tx.getOccurredAt().toString())).append(',')
+                    .append(csvCell(tx.getNote()))
+                    .append('\n');
+        }
+        return csv.toString();
+    }
+
     private Comparator<TransactionResponse> buildComparator(String sort) {
         if (sort == null || sort.isBlank()) return null;
         String[] parts = sort.split(",");
@@ -273,5 +351,38 @@ public class TransactionService {
     private void accumulateMonthly(Map<String, BigDecimal> monthlyNet, Instant occurredAt, BigDecimal delta) {
         String month = YearMonth.from(occurredAt.atZone(ZoneOffset.UTC)).toString();
         monthlyNet.merge(month, delta, BigDecimal::add);
+    }
+
+    private String hashTransferRequest(TransferRequest request) {
+        String note = request.getNote() == null ? "" : request.getNote().trim();
+        String payload = String.join("|",
+                request.getFromAccount(),
+                request.getToAccount(),
+                request.getAmount().stripTrailingZeros().toPlainString(),
+                note
+        );
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(bytes.length * 2);
+            for (byte b : bytes) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    private void validateIdempotentPayload(TransferIdempotencyRecord record, String requestHash) {
+        if (!record.getRequestHash().equals(requestHash)) {
+            throw new IllegalArgumentException("Idempotency-Key already used with different transfer payload");
+        }
+    }
+
+    private String csvCell(String value) {
+        if (value == null) return "";
+        String escaped = value.replace("\"", "\"\"");
+        return "\"" + escaped + "\"";
     }
 }
