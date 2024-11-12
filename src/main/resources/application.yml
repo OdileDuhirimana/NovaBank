@@ -47,3 +47,10 @@ app:
       months: 3
       users: 3
       tx-per-week: 6
+  notifications:
+    webhook:
+      enabled: false
+      url: ""
+      api-key: ""
+      connect-timeout-ms: 2000
+      read-timeout-ms: 3000
