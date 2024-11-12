@@ -25,6 +25,7 @@ import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Comparator;
 import java.util.Map;
@@ -41,6 +42,7 @@ public class TransactionService {
     private final TransferIdempotencyRecordRepository transferIdempotencyRecordRepository;
     private final AuditService auditService;
     private final FraudService fraudService;
+    private final WebhookService webhookService;
 
     @Transactional
     public String transfer(User user, TransferRequest request) {
@@ -124,7 +126,17 @@ public class TransactionService {
 
         auditService.log(user.getUsername(), "TRANSFER", from.getAccountNumber(), tx.getReference(),
                 "Transfer to " + to.getAccountNumber() + " amount " + amount);
-        fraudService.checkAndLogLargeTransaction(user.getUsername(), from.getAccountNumber(), amount, "LARGE_TRANSFER");
+        boolean flagged = fraudService.checkAndLogLargeTransaction(user.getUsername(), from.getAccountNumber(), amount, "LARGE_TRANSFER");
+        if (flagged) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("actor", user.getUsername());
+            payload.put("fromAccount", from.getAccountNumber());
+            payload.put("toAccount", to.getAccountNumber());
+            payload.put("amount", amount);
+            payload.put("reference", tx.getReference());
+            payload.put("note", request.getNote() == null ? "" : request.getNote());
+            webhookService.notifyEvent("LARGE_TRANSFER", payload);
+        }
         return tx.getReference();
     }
 

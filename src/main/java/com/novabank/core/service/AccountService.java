@@ -12,7 +12,9 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.stream.Collectors;
 
@@ -23,6 +25,7 @@ public class AccountService {
     private final TransactionRecordRepository txRepository;
     private final AuditService auditService;
     private final FraudService fraudService;
+    private final WebhookService webhookService;
 
     private final Random random = new SecureRandom();
 
@@ -102,6 +105,16 @@ public class AccountService {
                 ? "Account status updated to " + (active ? "active" : "inactive")
                 : "Account status updated to " + (active ? "active" : "inactive") + ": " + reason;
         auditService.log(actor.getUsername(), action, accountNumber, null, details);
+
+        if (!active) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("actor", actor.getUsername());
+            payload.put("accountNumber", accountNumber);
+            payload.put("owner", account.getUser().getUsername());
+            payload.put("reason", reason == null ? "" : reason);
+            payload.put("balance", account.getBalance());
+            webhookService.notifyEvent("ACCOUNT_FROZEN", payload);
+        }
 
         return new AccountResponse(account.getAccountNumber(), account.getBalance(), account.isActive());
     }
