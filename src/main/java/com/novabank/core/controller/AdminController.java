@@ -102,7 +102,7 @@ public class AdminController {
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<AccountResponse> updateAccountStatus(
             @AuthenticationPrincipal User actor,
-            @PathVariable String accountNumber,
+            @PathVariable("accountNumber") String accountNumber,
             @Valid @RequestBody AccountStatusUpdateRequest request
     ) {
         AccountResponse response = accountService.updateAccountStatus(
