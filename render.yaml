@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: nova-bank-api
+    runtime: java
+    plan: free
+    autoDeploy: true
+    buildCommand: mvn -DskipTests clean package
+    startCommand: java -jar target/nova-bank-core-0.0.1-SNAPSHOT.jar
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: JAVA_VERSION
+        value: "17"
+      - key: DB_HOST
+        fromDatabase:
+          name: nova-bank-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: nova-bank-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: nova-bank-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: nova-bank-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: nova-bank-db
+          property: password
+      - key: SECURITY_JWT_EXPIRATION_MS
+        value: "86400000"
+      - key: SECURITY_JWT_SECRET
+        sync: false
+
+databases:
+  - name: nova-bank-db
+    plan: free
+    databaseName: nova_bank
+    user: nova_user
