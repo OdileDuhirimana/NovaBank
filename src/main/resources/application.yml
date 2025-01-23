@@ -3,9 +3,9 @@ spring:
     name: nova-bank-core
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/nova_bank
-    username: postgres
-    password: postgres
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:nova_bank}}
+    username: ${SPRING_DATASOURCE_USERNAME:${DB_USER:postgres}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${DB_PASSWORD:postgres}}
 
   jpa:
     hibernate:
@@ -17,7 +17,7 @@ spring:
     show-sql: false
 
 server:
-  port: 8080
+  port: ${PORT:8080}
 
 management:
   endpoints:
@@ -30,8 +30,8 @@ management:
 
 security:
   jwt:
-    secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
-    expiration-ms: 86400000
+    secret: ${SECURITY_JWT_SECRET:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+    expiration-ms: ${SECURITY_JWT_EXPIRATION_MS:86400000}
 
 springdoc:
   api-docs:
