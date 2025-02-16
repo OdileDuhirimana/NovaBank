@@ -1,15 +1,13 @@
 services:
   - type: web
     name: nova-bank-api
-    runtime: java
+    runtime: docker
     plan: free
     autoDeploy: true
-    buildCommand: mvn -DskipTests clean package
-    startCommand: java -jar target/nova-bank-core-0.0.1-SNAPSHOT.jar
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     healthCheckPath: /actuator/health
     envVars:
-      - key: JAVA_VERSION
-        value: "17"
       - key: DB_HOST
         fromDatabase:
           name: nova-bank-db
