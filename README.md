@@ -149,6 +149,20 @@ Current suite covers authentication, account and transfer flows, edge cases, ide
 - Recommended for full backend hosting: Render, Railway, Fly.io, AWS, or similar Java-friendly platforms.
 - Vercel is suitable for hosting a static Swagger docs frontend, not the full Spring Boot runtime.
 
+### Render Quick Deploy
+
+This repository includes `render.yaml` for a Docker web service and managed Postgres database.
+
+1. Push to GitHub.
+2. Create a Render **Blueprint** from this repository.
+3. Render auto-provisions:
+   - `nova-bank-api` (web service)
+   - `nova-bank-db` (Postgres)
+4. Set manual secrets in Render:
+   - `SECURITY_JWT_SECRET` (or let Render keep your existing secure value)
+
+Runtime environment variables are documented in `.env.example`.
+
 ## Portfolio Positioning
 
 This repo demonstrates end-to-end backend product thinking:
