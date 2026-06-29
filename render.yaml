@@ -31,7 +31,7 @@ services:
       - key: SECURITY_JWT_EXPIRATION_MS
         value: "86400000"
       - key: SECURITY_JWT_SECRET
-        sync: false
+        generateValue: true
 
 databases:
   - name: nova-bank-db

@@ -23,14 +23,14 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,loggers,env,threaddump,heapdump
+        include: health,info
   endpoint:
     health:
-      show-details: always
+      show-details: when-authorized
 
 security:
   jwt:
-    secret: ${SECURITY_JWT_SECRET:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+    secret: ${SECURITY_JWT_SECRET}
     expiration-ms: ${SECURITY_JWT_EXPIRATION_MS:86400000}
 
 springdoc:

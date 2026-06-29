@@ -21,6 +21,7 @@ import org.springframework.context.annotation.Configuration;
                 license = @License(name = "Apache-2.0", url = "https://www.apache.org/licenses/LICENSE-2.0")
         ),
         servers = {
+                @Server(url = "https://nova-bank-api.onrender.com", description = "Production"),
                 @Server(url = "http://localhost:8080", description = "Local Dev")
         },
         security = {@SecurityRequirement(name = "bearerAuth")}
