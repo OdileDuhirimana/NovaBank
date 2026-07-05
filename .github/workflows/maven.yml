@@ -16,5 +16,40 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
           cache: 'maven'
-      - name: Build with Maven
+      - name: Build and run unit/component tests with Maven
+        env:
+          # CI-only, fixed, non-secret value — JwtService requires a valid 32+ byte Base64
+          # secret to even start the application context in tests (see its @PostConstruct
+          # guard). This is intentionally NOT the same kind of secret as a real deployment's
+          # SECURITY_JWT_SECRET (see render.yaml, which generates one) and signs nothing anyone
+          # will ever see or rely on.
+          SECURITY_JWT_SECRET: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
         run: mvn -B -DskipITs verify
+      - name: Upload JaCoCo coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: target/site/jacoco/
+          retention-days: 14
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+      - name: Run Testcontainers-backed integration tests (real PostgreSQL + Flyway)
+        env:
+          SECURITY_JWT_SECRET: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+        # GitHub-hosted ubuntu-latest runners ship with Docker pre-installed, which is all
+        # Testcontainers needs. This job intentionally does NOT pass -DskipITs, so
+        # FlywayMigrationPostgresIT actually runs against a real, disposable PostgreSQL 16
+        # container — see that class's Javadoc for why the H2-backed unit/component test suite
+        # above cannot exercise the real Flyway migration SQL on its own.
+        run: mvn -B verify

@@ -1,0 +1,129 @@
+name: CD (Render deploy with health-check gate + automatic rollback)
+
+# UNVERIFIED IN THIS ENVIRONMENT — see README "Deployment Notes / CD Pipeline (unverified)".
+# This workflow was authored and reviewed for correctness against Render's public API and
+# GitHub Actions semantics, but has not been executed against a live Render account/service in
+# this environment (no Render API key or service was available to test against). Treat it as a
+# reviewed starting point, not a proven-working pipeline, until it has been run once for real.
+#
+# WHY THIS EXISTS: the code review flagged that render.yaml's `autoDeploy: true` deploys
+# independently of this repository's CI workflow's result — a push with a red build could still
+# reach production. This workflow only runs after the CI workflow ("CI", see maven.yml)
+# completes successfully on main/master, and render.yaml's autoDeploy is now `false` (see that
+# file) so Render no longer deploys on its own — this workflow is the only path to production.
+#
+# Required repository secrets (none of these exist in this environment — configure them in a
+# real deployment before relying on this workflow):
+#   RENDER_API_KEY          Render API key (Account Settings -> API Keys)
+#   RENDER_SERVICE_ID       The nova-bank-api service ID (starts with "srv-")
+#   PROD_HEALTH_URL         e.g. https://nova-bank-api.onrender.com/actuator/health
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: ["main", "master"]
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record the currently-live commit (rollback target)
+        id: current
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          set -euo pipefail
+          last_live=$(curl -sS -H "Authorization: Bearer $RENDER_API_KEY" \
+            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys?status=live&limit=1" \
+            | jq -r '.[0].deploy.commit.id // empty')
+          echo "commit=$last_live" >> "$GITHUB_OUTPUT"
+          echo "Last known-live commit: ${last_live:-<none found>}"
+
+      - name: Trigger a new deploy of the commit CI just validated
+        id: deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          set -euo pipefail
+          commit_sha="${{ github.event.workflow_run.head_sha }}"
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"clearCache\":\"do_not_clear\",\"commitId\":\"$commit_sha\"}" \
+            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys")
+          deploy_id=$(echo "$response" | jq -r '.id')
+          echo "deploy_id=$deploy_id" >> "$GITHUB_OUTPUT"
+          echo "Triggered deploy $deploy_id for commit $commit_sha"
+
+      - name: Wait for the deploy to finish building/rolling out
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          DEPLOY_ID: ${{ steps.deploy.outputs.deploy_id }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            status=$(curl -sS -H "Authorization: Bearer $RENDER_API_KEY" \
+              "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys/$DEPLOY_ID" \
+              | jq -r '.status')
+            echo "Deploy status ($attempt/60): $status"
+            case "$status" in
+              live) exit 0 ;;
+              build_failed|update_failed|canceled|deactivated)
+                echo "::error::Deploy failed with status $status"
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+          echo "::error::Timed out waiting for deploy to reach 'live'"
+          exit 1
+
+      - name: Health-check the newly deployed service
+        id: healthcheck
+        continue-on-error: true
+        env:
+          PROD_HEALTH_URL: ${{ secrets.PROD_HEALTH_URL }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 10); do
+            status_code=$(curl -sS -o /tmp/health.json -w '%{http_code}' "$PROD_HEALTH_URL" || echo "000")
+            body=$(cat /tmp/health.json 2>/dev/null || echo "{}")
+            up=$(echo "$body" | jq -r '.status // empty')
+            echo "Health check ($attempt/10): HTTP $status_code, status=$up"
+            if [ "$status_code" = "200" ] && [ "$up" = "UP" ]; then
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "::error::Health check did not report UP after deploy"
+          exit 1
+
+      - name: Roll back to the last known-live commit on health-check failure
+        if: ${{ steps.healthcheck.outcome == 'failure' }}
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          ROLLBACK_COMMIT: ${{ steps.current.outputs.commit }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ROLLBACK_COMMIT" ]; then
+            echo "::error::No prior known-live commit recorded; cannot auto-rollback. Manual intervention required."
+            exit 1
+          fi
+          echo "Rolling back to previously-live commit $ROLLBACK_COMMIT"
+          curl -sS -X POST \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"clearCache\":\"do_not_clear\",\"commitId\":\"$ROLLBACK_COMMIT\"}" \
+            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys"
+          echo "::error::Deployment failed health check and was rolled back to $ROLLBACK_COMMIT"
+          exit 1
+
+      - name: Fail the workflow if health check failed (rollback already handled above)
+        if: ${{ steps.healthcheck.outcome == 'failure' }}
+        run: exit 1

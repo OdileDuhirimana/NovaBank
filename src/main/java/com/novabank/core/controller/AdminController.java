@@ -1,16 +1,14 @@
 package com.novabank.core.controller;
 
+import com.novabank.core.common.PaginationDefaults;
 import com.novabank.core.dto.account.AccountResponse;
 import com.novabank.core.dto.admin.AccountStatusUpdateRequest;
 import com.novabank.core.dto.admin.AdminAccountResponse;
-import com.novabank.core.model.Account;
-import com.novabank.core.model.AuditLog;
-import com.novabank.core.model.FraudLog;
+import com.novabank.core.dto.admin.AuditLogResponse;
+import com.novabank.core.dto.admin.FraudLogResponse;
 import com.novabank.core.model.User;
-import com.novabank.core.repository.AccountRepository;
-import com.novabank.core.repository.AuditLogRepository;
-import com.novabank.core.repository.FraudLogRepository;
 import com.novabank.core.service.AccountService;
+import com.novabank.core.service.AdminService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -21,7 +19,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -33,21 +30,25 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * Thin REST layer for administration/oversight endpoints. All persistence access and audit-read
+ * logging is delegated to {@link AdminService} / {@link AccountService} — this controller has no
+ * repository dependencies (see {@code ArchitectureFitnessTests} for the mechanically-enforced
+ * rule), matching every other controller in this codebase.
+ */
 @RestController
-@RequestMapping("/api/admin")
+@RequestMapping("/api/v1/admin")
 @RequiredArgsConstructor
 @Tag(name = "Administration", description = "Audit and fraud log access for ADMIN/AUDITOR roles")
 public class AdminController {
 
-    private final AccountRepository accountRepository;
-    private final AuditLogRepository auditLogRepository;
-    private final FraudLogRepository fraudLogRepository;
+    private final AdminService adminService;
     private final AccountService accountService;
 
     @Operation(summary = "List accounts for administration (ADMIN)")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Accounts returned",
-                    content = @Content(schema = @Schema(implementation = com.novabank.core.dto.admin.AdminAccountResponse.class))),
+                    content = @Content(schema = @Schema(implementation = AdminAccountResponse.class))),
             @ApiResponse(responseCode = "403", description = "Forbidden",
                     content = @Content(schema = @Schema(implementation = com.novabank.core.dto.common.ErrorResponse.class))),
             @ApiResponse(responseCode = "401", description = "Unauthorized",
@@ -57,39 +58,20 @@ public class AdminController {
     @PreAuthorize("hasRole('ADMIN')")
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<Page<AdminAccountResponse>> accounts(
+            @AuthenticationPrincipal User actor,
             @RequestParam(name = "page", defaultValue = "0") int page,
-            @RequestParam(name = "size", defaultValue = "20") int size,
+            @RequestParam(name = "size", defaultValue = PaginationDefaults.DEFAULT_PAGE_SIZE_STR) int size,
             @RequestParam(name = "active", required = false) Boolean active,
-            @RequestParam(name = "username", required = false) String username
+            @RequestParam(name = "username", required = false) String username,
+            @RequestParam(name = "sort", required = false) String sort
     ) {
-        var pageable = PageRequest.of(page, size);
-        Page<Account> result;
-        boolean hasUsername = username != null && !username.isBlank();
-
-        if (active != null && hasUsername) {
-            result = accountRepository.findByActiveAndUser_UsernameContainingIgnoreCase(active, username, pageable);
-        } else if (active != null) {
-            result = accountRepository.findByActive(active, pageable);
-        } else if (hasUsername) {
-            result = accountRepository.findByUser_UsernameContainingIgnoreCase(username, pageable);
-        } else {
-            result = accountRepository.findAll(pageable);
-        }
-
-        Page<AdminAccountResponse> body = result.map(a -> new AdminAccountResponse(
-                a.getAccountNumber(),
-                a.getBalance(),
-                a.isActive(),
-                a.getUser().getUsername(),
-                a.getCreatedAt()
-        ));
-        return ResponseEntity.ok(body);
+        return ResponseEntity.ok(adminService.listAccounts(actor.getUsername(), active, username, page, size, sort));
     }
 
     @Operation(summary = "Freeze or reactivate an account (ADMIN)")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Account status updated",
-                    content = @Content(schema = @Schema(implementation = com.novabank.core.dto.account.AccountResponse.class))),
+                    content = @Content(schema = @Schema(implementation = AccountResponse.class))),
             @ApiResponse(responseCode = "400", description = "Validation or bad request error",
                     content = @Content(schema = @Schema(implementation = com.novabank.core.dto.common.ErrorResponse.class))),
             @ApiResponse(responseCode = "403", description = "Forbidden",
@@ -114,10 +96,11 @@ public class AdminController {
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "List audit logs (ADMIN/AUDITOR)")
+    @Operation(summary = "List audit logs (ADMIN/AUDITOR)",
+            description = "Every call to this endpoint is itself recorded as an ADMIN_AUDIT_LOG_READ audit event.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Audit logs returned",
-                    content = @Content(schema = @Schema(implementation = com.novabank.core.model.AuditLog.class))),
+                    content = @Content(schema = @Schema(implementation = AuditLogResponse.class))),
             @ApiResponse(responseCode = "403", description = "Forbidden",
                     content = @Content(schema = @Schema(implementation = com.novabank.core.dto.common.ErrorResponse.class))),
             @ApiResponse(responseCode = "401", description = "Unauthorized",
@@ -126,15 +109,22 @@ public class AdminController {
     @GetMapping("/audit")
     @PreAuthorize("hasAnyRole('ADMIN','AUDITOR')")
     @SecurityRequirement(name = "bearerAuth")
-    public ResponseEntity<Page<AuditLog>> auditLogs(@RequestParam(name = "page", defaultValue = "0") int page,
-                                                    @RequestParam(name = "size", defaultValue = "20") int size) {
-        return ResponseEntity.ok(auditLogRepository.findAll(PageRequest.of(page, size)));
+    public ResponseEntity<Page<AuditLogResponse>> auditLogs(
+            @AuthenticationPrincipal User actor,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = PaginationDefaults.DEFAULT_PAGE_SIZE_STR) int size,
+            @RequestParam(name = "actor", required = false) String actorFilter,
+            @RequestParam(name = "action", required = false) String action,
+            @RequestParam(name = "sort", required = false) String sort
+    ) {
+        return ResponseEntity.ok(adminService.listAuditLogs(actor.getUsername(), actorFilter, action, page, size, sort));
     }
 
-    @Operation(summary = "List fraud logs (ADMIN/AUDITOR)")
+    @Operation(summary = "List fraud logs (ADMIN/AUDITOR)",
+            description = "Every call to this endpoint is itself recorded as an ADMIN_FRAUD_LOG_READ audit event.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Fraud logs returned",
-                    content = @Content(schema = @Schema(implementation = com.novabank.core.model.FraudLog.class))),
+                    content = @Content(schema = @Schema(implementation = FraudLogResponse.class))),
             @ApiResponse(responseCode = "403", description = "Forbidden",
                     content = @Content(schema = @Schema(implementation = com.novabank.core.dto.common.ErrorResponse.class))),
             @ApiResponse(responseCode = "401", description = "Unauthorized",
@@ -143,8 +133,14 @@ public class AdminController {
     @GetMapping("/fraud")
     @PreAuthorize("hasAnyRole('ADMIN','AUDITOR')")
     @SecurityRequirement(name = "bearerAuth")
-    public ResponseEntity<Page<FraudLog>> fraudLogs(@RequestParam(name = "page", defaultValue = "0") int page,
-                                                    @RequestParam(name = "size", defaultValue = "20") int size) {
-        return ResponseEntity.ok(fraudLogRepository.findAll(PageRequest.of(page, size)));
+    public ResponseEntity<Page<FraudLogResponse>> fraudLogs(
+            @AuthenticationPrincipal User actor,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = PaginationDefaults.DEFAULT_PAGE_SIZE_STR) int size,
+            @RequestParam(name = "username", required = false) String username,
+            @RequestParam(name = "eventType", required = false) String eventType,
+            @RequestParam(name = "sort", required = false) String sort
+    ) {
+        return ResponseEntity.ok(adminService.listFraudLogs(actor.getUsername(), username, eventType, page, size, sort));
     }
 }

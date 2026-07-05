@@ -3,10 +3,9 @@ package com.novabank.core;
 import com.novabank.core.dto.auth.LoginRequest;
 import com.novabank.core.dto.auth.RegisterRequest;
 import com.novabank.core.dto.transaction.TransferRequest;
-import com.novabank.core.model.Role;
 import com.novabank.core.model.User;
 import com.novabank.core.service.AccountService;
-import com.novabank.core.service.TransactionService;
+import com.novabank.core.service.TransactionCommandService;
 import com.novabank.core.service.UserService;
 import com.novabank.core.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -32,7 +31,7 @@ class FlowIntegrationTests {
     @Autowired
     private AccountService accountService;
     @Autowired
-    private TransactionService transactionService;
+    private TransactionCommandService transactionService;
     @Autowired
     private UserRepository userRepository;
 
@@ -43,7 +42,6 @@ class FlowIntegrationTests {
         rr.setUsername("alice");
         rr.setEmail("alice@example.com");
         rr.setPassword("password123");
-        rr.setRole(Role.CUSTOMER);
         var authResp = userService.register(rr);
         assertThat(authResp.getToken()).isNotBlank();
 

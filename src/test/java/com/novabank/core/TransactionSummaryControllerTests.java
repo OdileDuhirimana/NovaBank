@@ -6,7 +6,6 @@ import com.novabank.core.dto.auth.LoginRequest;
 import com.novabank.core.dto.auth.RegisterRequest;
 import com.novabank.core.dto.transaction.DepositWithdrawRequest;
 import com.novabank.core.dto.transaction.TransferRequest;
-import com.novabank.core.model.Role;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -43,8 +42,7 @@ class TransactionSummaryControllerTests {
         rr.setUsername(username);
         rr.setEmail(username + "@example.com");
         rr.setPassword("password123");
-        rr.setRole(Role.CUSTOMER);
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(rr)))
                 .andExpect(status().isOk());
@@ -52,7 +50,7 @@ class TransactionSummaryControllerTests {
         LoginRequest lr = new LoginRequest();
         lr.setUsername(username);
         lr.setPassword("password123");
-        MvcResult res = mockMvc.perform(post("/api/auth/login")
+        MvcResult res = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(lr)))
                 .andExpect(status().isOk())
@@ -61,7 +59,7 @@ class TransactionSummaryControllerTests {
     }
 
     private String createAccount(String token) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/accounts")
+        MvcResult result = mockMvc.perform(post("/api/v1/accounts")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -79,7 +77,7 @@ class TransactionSummaryControllerTests {
         deposit.setAccountNumber(accountA);
         deposit.setAmount(new BigDecimal("1000.00"));
         deposit.setNote("salary");
-        mockMvc.perform(post("/api/accounts/deposit")
+        mockMvc.perform(post("/api/v1/accounts/deposit")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(deposit)))
@@ -89,7 +87,7 @@ class TransactionSummaryControllerTests {
         withdraw.setAccountNumber(accountA);
         withdraw.setAmount(new BigDecimal("200.00"));
         withdraw.setNote("cash");
-        mockMvc.perform(post("/api/accounts/withdraw")
+        mockMvc.perform(post("/api/v1/accounts/withdraw")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(withdraw)))
@@ -100,13 +98,13 @@ class TransactionSummaryControllerTests {
         transfer.setToAccount(accountB);
         transfer.setAmount(new BigDecimal("300.00"));
         transfer.setNote("move");
-        mockMvc.perform(post("/api/transactions/transfer")
+        mockMvc.perform(post("/api/v1/transactions/transfer")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(transfer)))
                 .andExpect(status().isOk());
 
-        MvcResult summaryResult = mockMvc.perform(get("/api/transactions/summary")
+        MvcResult summaryResult = mockMvc.perform(get("/api/v1/transactions/summary")
                         .header("Authorization", "Bearer " + token)
                         .param("accountNumber", accountA))
                 .andExpect(status().isOk())
@@ -129,7 +127,7 @@ class TransactionSummaryControllerTests {
 
         String otherAccount = createAccount(token2);
 
-        mockMvc.perform(get("/api/transactions/summary")
+        mockMvc.perform(get("/api/v1/transactions/summary")
                         .header("Authorization", "Bearer " + token1)
                         .param("accountNumber", otherAccount))
                 .andExpect(status().isForbidden());

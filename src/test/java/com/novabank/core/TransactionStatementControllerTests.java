@@ -5,7 +5,6 @@ import com.novabank.core.dto.auth.LoginRequest;
 import com.novabank.core.dto.auth.RegisterRequest;
 import com.novabank.core.dto.transaction.DepositWithdrawRequest;
 import com.novabank.core.dto.transaction.TransferRequest;
-import com.novabank.core.model.Role;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -44,8 +43,7 @@ class TransactionStatementControllerTests {
         rr.setUsername(username);
         rr.setEmail(username + "@example.com");
         rr.setPassword("password123");
-        rr.setRole(Role.CUSTOMER);
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(rr)))
                 .andExpect(status().isOk());
@@ -53,7 +51,7 @@ class TransactionStatementControllerTests {
         LoginRequest lr = new LoginRequest();
         lr.setUsername(username);
         lr.setPassword("password123");
-        MvcResult res = mockMvc.perform(post("/api/auth/login")
+        MvcResult res = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(lr)))
                 .andExpect(status().isOk())
@@ -62,7 +60,7 @@ class TransactionStatementControllerTests {
     }
 
     private String createAccount(String token) throws Exception {
-        MvcResult created = mockMvc.perform(post("/api/accounts")
+        MvcResult created = mockMvc.perform(post("/api/v1/accounts")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -80,7 +78,7 @@ class TransactionStatementControllerTests {
         dep.setAccountNumber(a1);
         dep.setAmount(new BigDecimal("900.00"));
         dep.setNote("salary");
-        mockMvc.perform(post("/api/accounts/deposit")
+        mockMvc.perform(post("/api/v1/accounts/deposit")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(dep)))
@@ -91,13 +89,13 @@ class TransactionStatementControllerTests {
         tr.setToAccount(a2);
         tr.setAmount(new BigDecimal("250.00"));
         tr.setNote("savings move");
-        mockMvc.perform(post("/api/transactions/transfer")
+        mockMvc.perform(post("/api/v1/transactions/transfer")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(tr)))
                 .andExpect(status().isOk());
 
-        MvcResult statement = mockMvc.perform(get("/api/transactions/statement")
+        MvcResult statement = mockMvc.perform(get("/api/v1/transactions/statement")
                         .header("Authorization", "Bearer " + token)
                         .param("sort", "occurredAt,asc"))
                 .andExpect(status().isOk())

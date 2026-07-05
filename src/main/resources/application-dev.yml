@@ -1,0 +1,16 @@
+# Local/developer profile — activated via SPRING_PROFILES_ACTIVE=dev (see docker-compose.yml).
+#
+# This is one of the two profiles (the other being "local") that BootstrapConfig allows to start
+# without an explicit APP_BOOTSTRAP_ADMIN_PASSWORD; see BootstrapConfig's Javadoc.
+logging:
+  level:
+    root: INFO
+    com.novabank.core: DEBUG
+    org.hibernate.SQL: DEBUG
+
+app:
+  bootstrap:
+    historical:
+      # Convenient for exercising listing/summary/statement endpoints against a realistic
+      # multi-month dataset locally without hand-seeding data through the API.
+      enabled: true

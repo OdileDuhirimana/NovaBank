@@ -4,7 +4,8 @@ import com.novabank.core.dto.transaction.TransactionResponse;
 import com.novabank.core.dto.transaction.TransactionSummaryResponse;
 import com.novabank.core.dto.transaction.TransferRequest;
 import com.novabank.core.model.User;
-import com.novabank.core.service.TransactionService;
+import com.novabank.core.service.TransactionCommandService;
+import com.novabank.core.service.TransactionQueryService;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -25,13 +26,20 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Thin REST layer over the transaction command/query services. Depends on
+ * {@link TransactionCommandService} for the one write operation (transfer) and
+ * {@link TransactionQueryService} for every read operation (listing, summary, statement) — see
+ * both classes' Javadoc for why this is split rather than a single service.
+ */
 @RestController
-@RequestMapping("/api/transactions")
+@RequestMapping("/api/v1/transactions")
 @RequiredArgsConstructor
 @Tag(name = "Transactions", description = "View transaction history and transfer funds")
 public class TransactionController {
 
-    private final TransactionService transactionService;
+    private final TransactionCommandService transactionCommandService;
+    private final TransactionQueryService transactionQueryService;
 
     @Operation(summary = "List transaction history for the current user")
     @ApiResponses({
@@ -53,7 +61,7 @@ public class TransactionController {
             @RequestParam(name = "sort", required = false) String sort
     ) {
         return ResponseEntity.ok(
-                transactionService.listUserTransactionsWithOptions(
+                transactionQueryService.listUserTransactionsWithOptions(
                         user, startDate, endDate, minAmount, maxAmount, page, size, sort
                 )
         );
@@ -78,7 +86,7 @@ public class TransactionController {
             @RequestParam(name = "endDate", required = false) String endDate,
             @RequestParam(name = "accountNumber", required = false) String accountNumber
     ) {
-        return ResponseEntity.ok(transactionService.summarizeUserTransactions(user, startDate, endDate, accountNumber));
+        return ResponseEntity.ok(transactionQueryService.summarizeUserTransactions(user, startDate, endDate, accountNumber));
     }
 
     @Operation(summary = "Export transaction statement as CSV")
@@ -99,7 +107,7 @@ public class TransactionController {
             @RequestParam(name = "maxAmount", required = false) BigDecimal maxAmount,
             @RequestParam(name = "sort", required = false) String sort
     ) {
-        String csv = transactionService.buildStatementCsv(user, startDate, endDate, minAmount, maxAmount, sort);
+        String csv = transactionQueryService.buildStatementCsv(user, startDate, endDate, minAmount, maxAmount, sort);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"transaction-statement.csv\"")
                 .contentType(MediaType.valueOf("text/csv"))
@@ -123,7 +131,7 @@ public class TransactionController {
                                                         @Parameter(description = "Optional idempotency key to safely retry transfer requests")
                                                         @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
                                                         @Valid @RequestBody TransferRequest request) {
-        String ref = transactionService.transfer(user, request, idempotencyKey);
+        String ref = transactionCommandService.transfer(user, request, idempotencyKey);
         return ResponseEntity.ok(Map.of("reference", ref));
     }
 }

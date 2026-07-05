@@ -13,7 +13,14 @@ set -euo pipefail
 # Prerequisites:
 # - Server running at BASE_URL (default http://localhost:8080)
 # - jq and curl installed
-# - Database reachable with seeded ADMIN: admin / admin12345 (change via env vars)
+# - Database reachable with a seeded ADMIN user (see BootstrapConfig). IMPORTANT: since the
+#   hardcoded-default-admin-password fix, the seeded password is NOT guessable by default —
+#   set APP_BOOTSTRAP_ADMIN_PASSWORD=admin12345 in your local .env (see .env.example) before
+#   starting the server if you want this script's ADMIN_PASSWORD default below to work
+#   unmodified, or export ADMIN_PASSWORD to whatever value you actually configured. If you are
+#   running under the "dev"/"local" Spring profile with no explicit password set at all, a
+#   random password is generated and printed to the server's startup logs instead — copy it
+#   into ADMIN_PASSWORD below.
 #
 # Usage:
 #   bash scripts/curl-full-flow.sh
@@ -64,13 +71,13 @@ fi
 
 hr; echo "1) Register customer: $CUSTOMER_USERNAME"
 REG_PAYLOAD=$(jq -n --arg u "$CUSTOMER_USERNAME" --arg e "$CUSTOMER_EMAIL" --arg p "$CUSTOMER_PASSWORD" '{username:$u,email:$e,password:$p,role:"CUSTOMER"}')
-REG_RESP=$(api POST /api/auth/register "$REG_PAYLOAD") || true
+REG_RESP=$(api POST /api/v1/auth/register "$REG_PAYLOAD") || true
 # If user already exists, registration will fail; continue.
 echo "$REG_RESP" | jq . || echo "$REG_RESP"
 
 hr; echo "2) Login customer to get JWT"
 LOGIN_PAYLOAD=$(jq -n --arg u "$CUSTOMER_USERNAME" --arg p "$CUSTOMER_PASSWORD" '{username:$u,password:$p}')
-LOGIN_RESP=$(api POST /api/auth/login "$LOGIN_PAYLOAD")
+LOGIN_RESP=$(api POST /api/v1/auth/login "$LOGIN_PAYLOAD")
 echo "$LOGIN_RESP" | jq .
 TOKEN=$(echo "$LOGIN_RESP" | jq -r .token)
 if [[ -z "$TOKEN" || "$TOKEN" == "null" ]]; then
@@ -78,43 +85,43 @@ if [[ -z "$TOKEN" || "$TOKEN" == "null" ]]; then
 fi
 
 hr; echo "3) Create Account A"
-ACC_A_RESP=$(api POST /api/accounts "" "$TOKEN")
+ACC_A_RESP=$(api POST /api/v1/accounts "" "$TOKEN")
 echo "$ACC_A_RESP" | jq .
 ACC_A=$(echo "$ACC_A_RESP" | jq -r .accountNumber)
 
 hr; echo "4) Deposit 200.00 into Account A"
 DEP_PAYLOAD=$(jq -n --arg acc "$ACC_A" '{accountNumber:$acc,amount:200.00,note:"seed"}')
-api POST /api/accounts/deposit "$DEP_PAYLOAD" "$TOKEN" | jq .
+api POST /api/v1/accounts/deposit "$DEP_PAYLOAD" "$TOKEN" | jq .
 
 hr; echo "5) Create Account B"
-ACC_B_RESP=$(api POST /api/accounts "" "$TOKEN")
+ACC_B_RESP=$(api POST /api/v1/accounts "" "$TOKEN")
 echo "$ACC_B_RESP" | jq .
 ACC_B=$(echo "$ACC_B_RESP" | jq -r .accountNumber)
 
 hr; echo "6) Withdraw 25.50 from Account A"
 WD_PAYLOAD=$(jq -n --arg acc "$ACC_A" '{accountNumber:$acc,amount:25.50,note:"atm"}')
-api POST /api/accounts/withdraw "$WD_PAYLOAD" "$TOKEN" | jq .
+api POST /api/v1/accounts/withdraw "$WD_PAYLOAD" "$TOKEN" | jq .
 
 hr; echo "7) Transfer 50.00 from A -> B"
 TR_PAYLOAD=$(jq -n --arg from "$ACC_A" --arg to "$ACC_B" '{fromAccount:$from,toAccount:$to,amount:50.00,note:"move"}')
-api POST /api/transactions/transfer "$TR_PAYLOAD" "$TOKEN" | jq .
+api POST /api/v1/transactions/transfer "$TR_PAYLOAD" "$TOKEN" | jq .
 
 hr; echo "8) List my accounts"
-api GET /api/accounts "" "$TOKEN" | jq .
+api GET /api/v1/accounts "" "$TOKEN" | jq .
 
 hr; echo "9) My transactions"
-api GET /api/transactions/my "" "$TOKEN" | jq .
+api GET /api/v1/transactions/my "" "$TOKEN" | jq .
 
 hr; echo "10) Login as ADMIN and fetch audit/fraud logs"
 ADMIN_LOGIN_PAYLOAD=$(jq -n --arg u "$ADMIN_USERNAME" --arg p "$ADMIN_PASSWORD" '{username:$u,password:$p}')
-ADMIN_LOGIN_RESP=$(api POST /api/auth/login "$ADMIN_LOGIN_PAYLOAD")
+ADMIN_LOGIN_RESP=$(api POST /api/v1/auth/login "$ADMIN_LOGIN_PAYLOAD")
 echo "$ADMIN_LOGIN_RESP" | jq .
 ADMIN_TOKEN=$(echo "$ADMIN_LOGIN_RESP" | jq -r .token)
 if [[ -n "$ADMIN_TOKEN" && "$ADMIN_TOKEN" != "null" ]]; then
   echo "Audit logs (page=0,size=10):"
-  api GET "/api/admin/audit?page=0&size=10" "" "$ADMIN_TOKEN" | jq '.content // .'
+  api GET "/api/v1/admin/audit?page=0&size=10" "" "$ADMIN_TOKEN" | jq '.content // .'
   echo "Fraud logs (page=0,size=10):"
-  api GET "/api/admin/fraud?page=0&size=10" "" "$ADMIN_TOKEN" | jq '.content // .'
+  api GET "/api/v1/admin/fraud?page=0&size=10" "" "$ADMIN_TOKEN" | jq '.content // .'
 else
   echo "Warning: Could not login as ADMIN (username=$ADMIN_USERNAME). Check BootstrapConfig or credentials."
 fi

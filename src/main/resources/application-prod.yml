@@ -1,0 +1,20 @@
+# Production profile — activated via SPRING_PROFILES_ACTIVE=prod (see render.yaml).
+#
+# This profile is NOT in BootstrapConfig's dev/local allow-list: starting with this profile
+# active and no explicit APP_BOOTSTRAP_ADMIN_PASSWORD fails application startup entirely rather
+# than seeding a default admin account. See BootstrapConfig Javadoc.
+logging:
+  level:
+    root: WARN
+    com.novabank.core: INFO
+    org.hibernate.SQL: WARN
+
+management:
+  endpoint:
+    health:
+      show-details: when-authorized
+
+app:
+  bootstrap:
+    historical:
+      enabled: false

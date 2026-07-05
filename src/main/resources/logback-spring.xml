@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Structured logging configuration.
+
+  Local/dev/test keep the standard human-readable console pattern — JSON console output is a
+  genuine readability regression when a developer is tailing logs interactively. staging/prod
+  (and the "no profile set" default, treated as production-like everywhere else in this
+  project — see BootstrapConfig) switch to single-line JSON via the hand-rolled JsonLogLayout
+  (see its Javadoc for why this avoids adding a new logging dependency), suitable for ingestion
+  by a log aggregator that expects structured records.
+
+  Every line — in both formats — includes the request-scoped correlation ID that
+  CorrelationIdFilter populates into MDC, and, when distributed tracing is active, the
+  traceId/spanId Micrometer Tracing populates into MDC — see the "Observability" section of
+  README for the caveat that tracing is instrumented but not verified against a live collector
+  in this environment.
+-->
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <springProfile name="staging,prod">
+        <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <layout class="com.novabank.core.logging.JsonLogLayout"/>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="JSON_CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="!staging &amp; !prod">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} [correlationId=%X{correlationId:-none}] - %msg%n</pattern>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+</configuration>

@@ -1,11 +1,10 @@
 package com.novabank.core;
 
 import com.novabank.core.dto.transaction.TransferRequest;
-import com.novabank.core.model.Role;
 import com.novabank.core.model.User;
 import com.novabank.core.repository.UserRepository;
 import com.novabank.core.service.AccountService;
-import com.novabank.core.service.TransactionService;
+import com.novabank.core.service.TransactionCommandService;
 import com.novabank.core.service.UserService;
 import com.novabank.core.dto.auth.RegisterRequest;
 import org.junit.jupiter.api.Test;
@@ -33,7 +32,7 @@ class TransactionEdgeTests {
     @Autowired
     private AccountService accountService;
     @Autowired
-    private TransactionService transactionService;
+    private TransactionCommandService transactionService;
 
     private User bootstrapUser() {
         String unique = "bob_" + System.nanoTime();
@@ -41,7 +40,6 @@ class TransactionEdgeTests {
         rr.setUsername(unique);
         rr.setEmail(unique + "@example.com");
         rr.setPassword("password123");
-        rr.setRole(Role.CUSTOMER);
         userService.register(rr);
         return userRepository.findByUsername(unique).orElseThrow();
     }

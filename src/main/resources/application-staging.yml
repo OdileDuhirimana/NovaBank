@@ -1,0 +1,12 @@
+# Staging profile — a pre-production environment that should behave like prod operationally
+# (strict admin-credential enforcement, quieter logging) while still being safe to reset/reseed.
+# Activate via SPRING_PROFILES_ACTIVE=staging.
+logging:
+  level:
+    root: INFO
+    com.novabank.core: INFO
+
+management:
+  endpoint:
+    health:
+      show-details: when-authorized

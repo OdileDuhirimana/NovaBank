@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/accounts")
+@RequestMapping("/api/v1/accounts")
 @RequiredArgsConstructor
 @Tag(name = "Accounts", description = "Manage bank accounts for the current user")
 public class AccountController {

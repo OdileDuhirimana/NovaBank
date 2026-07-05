@@ -25,7 +25,7 @@ public class AccountService {
     private final TransactionRecordRepository txRepository;
     private final AuditService auditService;
     private final FraudService fraudService;
-    private final WebhookService webhookService;
+    private final WebhookOutboxService webhookOutboxService;
 
     private final Random random = new SecureRandom();
 
@@ -113,7 +113,10 @@ public class AccountService {
             payload.put("owner", account.getUser().getUsername());
             payload.put("reason", reason == null ? "" : reason);
             payload.put("balance", account.getBalance());
-            webhookService.notifyEvent("ACCOUNT_FROZEN", payload);
+            // Enqueued to the outbox (a fast local DB insert) rather than dispatched here
+            // synchronously — see WebhookOutboxEvent for why an inline HTTP call from inside
+            // this @Transactional method would be a reliability risk.
+            webhookOutboxService.enqueue("ACCOUNT_FROZEN", payload);
         }
 
         return new AccountResponse(account.getAccountNumber(), account.getBalance(), account.isActive());

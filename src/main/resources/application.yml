@@ -9,12 +9,19 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      # Schema is owned by Flyway migrations (src/main/resources/db/migration). `validate`
+      # makes Hibernate refuse to start if the entity model and the migrated schema disagree,
+      # instead of silently auto-altering a production banking database.
+      ddl-auto: validate
     properties:
       hibernate:
         format_sql: true
         jdbc.lob.non_contextual_creation: true
     show-sql: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
 
 server:
   port: ${PORT:8080}
@@ -23,10 +30,30 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # `metrics`/`prometheus` add a real, scrapeable metrics surface (Micrometer +
+        # micrometer-registry-prometheus) on top of the previous health/info-only exposure —
+        # closes the "no monitoring at all" observability gap. Left permitAll alongside
+        # health/info in SecurityConfig for the same reason typical Prometheus scrape configs
+        # don't carry a bearer token; documented there as a deliberate simplification for a
+        # portfolio-scale single-instance deployment.
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: when-authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    # Distributed tracing instrumentation hooks (Micrometer Tracing + Brave + a Zipkin reporter).
+    # Sampling probability and the collector endpoint are intentionally externalized — see
+    # MANAGEMENT_TRACING_SAMPLING_PROBABILITY / MANAGEMENT_ZIPKIN_TRACING_ENDPOINT in
+    # .env.example. NOT verified against a live Zipkin/OTel collector in this environment; see
+    # README "Observability" section for the explicit caveat.
+    sampling:
+      probability: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:1.0}
+  zipkin:
+    tracing:
+      endpoint: ${MANAGEMENT_ZIPKIN_TRACING_ENDPOINT:http://localhost:9411/api/v2/spans}
 
 security:
   jwt:
@@ -58,3 +85,12 @@ app:
       api-key: ""
       connect-timeout-ms: 2000
       read-timeout-ms: 3000
+  webhook-outbox:
+    # WebhookDispatcher poll interval and retry ceiling — see WebhookOutboxEvent/WebhookDispatcher.
+    # Events are written to the outbox table synchronously (a fast local DB insert, part of the
+    # same transaction as the business operation) and delivered asynchronously by this poller,
+    # which is what actually removes the blocking external HTTP call from the transfer/freeze
+    # request path.
+    dispatch-interval-ms: 2000
+    batch-size: 20
+    max-attempts: 5
