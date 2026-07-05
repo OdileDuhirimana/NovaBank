@@ -3,15 +3,20 @@ services:
     image: postgres:16
     container_name: nova-bank-db
     environment:
-      POSTGRES_DB: nova_bank
-      POSTGRES_USER: nova_user
-      POSTGRES_PASSWORD: nova_password
+      # No hardcoded credentials in this file (see the code review's committed-secret finding).
+      # Docker Compose auto-loads a `.env` file from the project root for `${...}` substitution
+      # below; copy `.env.example` to `.env` and fill in real local-only values before running
+      # `docker compose up`. The `:?` form fails fast with a clear message instead of silently
+      # falling back to a hardcoded value if the variable is missing.
+      POSTGRES_DB: ${POSTGRES_DB:-nova_bank}
+      POSTGRES_USER: ${POSTGRES_USER:-nova_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in a local .env file (see .env.example)}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nova_user -d nova_bank"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-nova_user} -d $${POSTGRES_DB:-nova_bank}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -22,11 +27,21 @@ services:
     ports:
       - "8081:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://nova-bank-db:5432/nova_bank
-      SPRING_DATASOURCE_USERNAME: nova_user
-      SPRING_DATASOURCE_PASSWORD: nova_password
-      JWT_SECRET: ZmFrZXNlY3JldGZvcmtleWJhc2U2NA==
-      JWT_EXPIRATION_MS: 86400000
+      SPRING_DATASOURCE_URL: jdbc:postgresql://nova-bank-db:5432/${POSTGRES_DB:-nova_bank}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-nova_user}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in a local .env file (see .env.example)}
+      # Must match the property application.yml actually binds: security.jwt.secret
+      # (SECURITY_JWT_SECRET). No default/fallback here on purpose — generate your own with
+      # `openssl rand -base64 32` and put it in your local .env file (see .env.example).
+      SECURITY_JWT_SECRET: ${SECURITY_JWT_SECRET:?Set SECURITY_JWT_SECRET in a local .env file (see .env.example)}
+      SECURITY_JWT_EXPIRATION_MS: ${SECURITY_JWT_EXPIRATION_MS:-900000}
+      SECURITY_JWT_REFRESH_EXPIRATION_MS: ${SECURITY_JWT_REFRESH_EXPIRATION_MS:-604800000}
+      # dev/local are the only profiles BootstrapConfig allows to start without an explicit
+      # APP_BOOTSTRAP_ADMIN_PASSWORD (see BootstrapConfig Javadoc) — left unset here on purpose
+      # to demonstrate the safe random-password-generation path in local Docker Compose. Check
+      # `docker compose logs nova-bank-app` for the generated password, or set
+      # APP_BOOTSTRAP_ADMIN_PASSWORD in your .env for a stable local login.
+      SPRING_PROFILES_ACTIVE: dev
     depends_on:
       nova-bank-db:
         condition: service_healthy

@@ -31,7 +31,11 @@ management:
 security:
   jwt:
     secret: ${SECURITY_JWT_SECRET}
-    expiration-ms: ${SECURITY_JWT_EXPIRATION_MS:86400000}
+    # Short-lived on purpose: a leaked access token now has a small blast radius (15 min
+    # default) instead of the previous 24h. See refresh-expiration-ms for the longer-lived,
+    # server-revocable refresh token that replaces the lost convenience (RefreshTokenService).
+    expiration-ms: ${SECURITY_JWT_EXPIRATION_MS:900000}
+    refresh-expiration-ms: ${SECURITY_JWT_REFRESH_EXPIRATION_MS:604800000}
 
 springdoc:
   api-docs:

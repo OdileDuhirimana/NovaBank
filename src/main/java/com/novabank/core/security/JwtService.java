@@ -3,6 +3,7 @@ package com.novabank.core.security;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.io.DecodingException;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
@@ -31,7 +32,12 @@ public class JwtService {
             if (keyBytes.length < 32) {
                 throw new IllegalStateException("security.jwt.secret must decode to at least 32 bytes for HS256");
             }
-        } catch (IllegalArgumentException ex) {
+        } catch (IllegalArgumentException | DecodingException ex) {
+            // Found via unit test (JwtServiceTest): jjwt's Decoders.BASE64.decode() throws its
+            // own io.jsonwebtoken.io.DecodingException for malformed Base64 input, which is not
+            // an IllegalArgumentException — catching only IllegalArgumentException let a
+            // malformed (but non-blank) SECURITY_JWT_SECRET value escape this guard as an
+            // unhandled DecodingException instead of the intended clear IllegalStateException.
             throw new IllegalStateException("security.jwt.secret must be valid Base64", ex);
         }
     }

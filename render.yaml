@@ -3,7 +3,13 @@ services:
     name: nova-bank-api
     runtime: docker
     plan: free
-    autoDeploy: true
+    # Deliberately false: deployment is now gated on CI success and a post-deploy health check
+    # via .github/workflows/cd.yml (with automatic rollback to the last known-live commit on
+    # health-check failure), rather than Render deploying independently of whether the test
+    # suite passed — see that workflow's header comment for the full rationale and the required
+    # secrets, and the README "CD Pipeline (unverified)" section for the honest caveat that this
+    # has not been exercised against a live Render account in this environment.
+    autoDeploy: false
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /actuator/health
@@ -29,8 +35,19 @@ services:
           name: nova-bank-db
           property: password
       - key: SECURITY_JWT_EXPIRATION_MS
-        value: "86400000"
+        value: "900000"
       - key: SECURITY_JWT_SECRET
+        generateValue: true
+      - key: SECURITY_JWT_REFRESH_EXPIRATION_MS
+        value: "604800000"
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      # CRITICAL: BootstrapConfig refuses to start the application in a non-dev/non-local
+      # profile (this service runs with SPRING_PROFILES_ACTIVE=prod above) unless this is set
+      # explicitly. Render's generateValue provisions a strong random value at deploy time,
+      # exactly like SECURITY_JWT_SECRET above, so the seeded admin account never uses a
+      # guessable or previously-documented password.
+      - key: APP_BOOTSTRAP_ADMIN_PASSWORD
         generateValue: true
 
 databases:

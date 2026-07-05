@@ -1,0 +1,18 @@
+app:
+  bootstrap:
+    admin:
+      # Explicit, test-only value. Mirrors production's requirement (see BootstrapConfig /
+      # APP_BOOTSTRAP_ADMIN_PASSWORD) that the admin password must always be set explicitly by
+      # the environment rather than silently defaulted — the test environment sets it explicitly
+      # here, it is not left to a code-level fallback.
+      password: admin12345
+  security:
+    auth-rate-limit:
+      # Disabled by default across the test suite: most test classes call /api/auth/register and
+      # /api/auth/login as test setup (not as the behavior under test), all through MockMvc's
+      # fixed 127.0.0.1 remote address, sharing one Spring TestContext-cached application context
+      # (and therefore one AuthRateLimitFilter bean's in-memory bucket state) across the whole
+      # suite run. Without this override, unrelated test classes would spuriously rate-limit each
+      # other. AuthRateLimitTests re-enables this explicitly via @TestPropertySource to verify the
+      # real behavior in isolation.
+      enabled: false

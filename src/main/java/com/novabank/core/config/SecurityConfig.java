@@ -1,5 +1,6 @@
 package com.novabank.core.config;
 
+import com.novabank.core.security.AuthRateLimitFilter;
 import com.novabank.core.security.JwtAuthFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -27,6 +28,7 @@ import org.springframework.web.filter.CorsFilter;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final AuthRateLimitFilter authRateLimitFilter;
     private final UserDetailsService userDetailsService;
 
     @Bean
@@ -36,11 +38,27 @@ public class SecurityConfig {
                 .cors(cors -> {})
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**", "/actuator/health", "/actuator/info").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
+                        .requestMatchers(
+                                "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**",
+                                "/actuator/health", "/actuator/info",
+                                // Metrics/tracing scrape endpoints: permitAll for the same reason
+                                // health/info are — a typical Prometheus scrape config does not
+                                // carry a bearer token. Acceptable simplification for this
+                                // portfolio-scale single-instance deployment; a real production
+                                // rollout would restrict these to an internal network/allow-listed
+                                // scraper rather than the public internet.
+                                "/actuator/metrics/**", "/actuator/prometheus"
+                        ).permitAll()
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/v1/auth/register", "/api/v1/auth/login",
+                                "/api/v1/auth/refresh", "/api/v1/auth/logout"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
                 .authenticationProvider(authenticationProvider())
+                // Rate limiting runs before authentication so brute-force/spam attempts are
+                // rejected with 429 before they ever reach the authentication provider.
+                .addFilterBefore(authRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
