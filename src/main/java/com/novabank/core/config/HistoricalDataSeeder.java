@@ -196,7 +196,7 @@ public class HistoricalDataSeeder {
 
     private void createDeposit(User user, Account to, BigDecimal amount, Instant when, String note) {
         to.setBalance(to.getBalance().add(amount));
-        accountRepository.save(to);
+        syncVersionAfterSave(to);
 
         TransactionRecord tx = new TransactionRecord();
         tx.setType(TransactionRecord.Type.DEPOSIT);
@@ -235,7 +235,7 @@ public class HistoricalDataSeeder {
     private void createWithdrawal(User user, Account from, BigDecimal amount, Instant when, String note) {
         if (from.getBalance().compareTo(amount) < 0) return;
         from.setBalance(from.getBalance().subtract(amount));
-        accountRepository.save(from);
+        syncVersionAfterSave(from);
 
         TransactionRecord tx = new TransactionRecord();
         tx.setType(TransactionRecord.Type.WITHDRAWAL);
@@ -274,8 +274,8 @@ public class HistoricalDataSeeder {
         if (from.getBalance().compareTo(amount) < 0) return;
         from.setBalance(from.getBalance().subtract(amount));
         to.setBalance(to.getBalance().add(amount));
-        accountRepository.save(from);
-        accountRepository.save(to);
+        syncVersionAfterSave(from);
+        syncVersionAfterSave(to);
 
         TransactionRecord tx = new TransactionRecord();
         tx.setType(TransactionRecord.Type.TRANSFER);
@@ -309,6 +309,32 @@ public class HistoricalDataSeeder {
             fl.setUpdatedAt(when);
             fraudLogRepository.save(fl);
         }
+    }
+
+    /**
+     * Persists {@code account} and copies the resulting {@code @Version} value back onto the
+     * caller's in-memory instance.
+     *
+     * Why this is needed: this seeder is a {@link CommandLineRunner}, not itself
+     * {@code @Transactional}, so every {@code accountRepository.save(...)} call below runs in its
+     * own short-lived transaction/persistence context. Because the {@code Account} objects held
+     * in {@code userAccounts}/{@code allAccounts} in {@link #generateTransactionsAndLogs} are
+     * reused across many such calls (the same account is deposited to, withdrawn from, and
+     * transferred between repeatedly while generating weeks of history), each subsequent
+     * {@code save()} merges an already-detached entity. Hibernate's merge returns a *new* managed
+     * instance carrying the freshly-incremented {@code version} — it does not mutate the detached
+     * instance passed in. Without copying that new version back, the next {@code save()} of the
+     * same shared instance still carries the previous run's stale version and Hibernate's
+     * optimistic-lock check rejects it as a concurrent update
+     * ({@link org.hibernate.StaleObjectStateException}), which previously crashed application
+     * startup deterministically on essentially every {@code dev}-profile run (historical seeding
+     * is enabled by default there). Since the {@code Account} instances are shared by reference
+     * across every collection that holds them, patching {@code version} in place here fixes every
+     * reference at once.
+     */
+    private void syncVersionAfterSave(Account account) {
+        Account saved = accountRepository.save(account);
+        account.setVersion(saved.getVersion());
     }
 
     private String generateUniqueAccountNumber() {
