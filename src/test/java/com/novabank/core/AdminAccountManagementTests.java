@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.novabank.core.dto.auth.LoginRequest;
 import com.novabank.core.dto.auth.RegisterRequest;
-import com.novabank.core.model.Role;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -40,8 +39,7 @@ class AdminAccountManagementTests {
         rr.setUsername(username);
         rr.setEmail(username + "@example.com");
         rr.setPassword("password123");
-        rr.setRole(Role.CUSTOMER);
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(rr)))
                 .andExpect(status().isOk());
@@ -49,7 +47,7 @@ class AdminAccountManagementTests {
         LoginRequest lr = new LoginRequest();
         lr.setUsername(username);
         lr.setPassword("password123");
-        MvcResult res = mockMvc.perform(post("/api/auth/login")
+        MvcResult res = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(lr)))
                 .andExpect(status().isOk())
@@ -61,7 +59,7 @@ class AdminAccountManagementTests {
         LoginRequest lr = new LoginRequest();
         lr.setUsername("admin");
         lr.setPassword("admin12345");
-        MvcResult res = mockMvc.perform(post("/api/auth/login")
+        MvcResult res = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(lr)))
                 .andExpect(status().isOk())
@@ -75,19 +73,19 @@ class AdminAccountManagementTests {
         String customerToken = registerAndLoginCustomer(username);
         String adminToken = loginAdmin();
 
-        MvcResult created = mockMvc.perform(post("/api/accounts")
+        MvcResult created = mockMvc.perform(post("/api/v1/accounts")
                         .header("Authorization", "Bearer " + customerToken))
                 .andExpect(status().isOk())
                 .andReturn();
         String accountNumber = objectMapper.readTree(created.getResponse().getContentAsString()).get("accountNumber").asText();
 
-        mockMvc.perform(patch("/api/admin/accounts/{accountNumber}/status", accountNumber)
+        mockMvc.perform(patch("/api/v1/admin/accounts/{accountNumber}/status", accountNumber)
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"active\":false,\"reason\":\"suspicious activity\"}"))
                 .andExpect(status().isOk());
 
-        MvcResult depositResult = mockMvc.perform(post("/api/accounts/deposit")
+        MvcResult depositResult = mockMvc.perform(post("/api/v1/accounts/deposit")
                         .header("Authorization", "Bearer " + customerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"accountNumber\":\"" + accountNumber + "\",\"amount\":50,\"note\":\"retry\"}"))
@@ -104,13 +102,13 @@ class AdminAccountManagementTests {
         String customerToken = registerAndLoginCustomer(username);
         String adminToken = loginAdmin();
 
-        MvcResult created = mockMvc.perform(post("/api/accounts")
+        MvcResult created = mockMvc.perform(post("/api/v1/accounts")
                         .header("Authorization", "Bearer " + customerToken))
                 .andExpect(status().isOk())
                 .andReturn();
         String accountNumber = objectMapper.readTree(created.getResponse().getContentAsString()).get("accountNumber").asText();
 
-        MvcResult list = mockMvc.perform(get("/api/admin/accounts")
+        MvcResult list = mockMvc.perform(get("/api/v1/admin/accounts")
                         .header("Authorization", "Bearer " + adminToken)
                         .param("active", "true")
                         .param("username", username))
@@ -127,13 +125,13 @@ class AdminAccountManagementTests {
         String username = "noadmin_" + System.nanoTime();
         String customerToken = registerAndLoginCustomer(username);
 
-        MvcResult created = mockMvc.perform(post("/api/accounts")
+        MvcResult created = mockMvc.perform(post("/api/v1/accounts")
                         .header("Authorization", "Bearer " + customerToken))
                 .andExpect(status().isOk())
                 .andReturn();
         String accountNumber = objectMapper.readTree(created.getResponse().getContentAsString()).get("accountNumber").asText();
 
-        mockMvc.perform(patch("/api/admin/accounts/{accountNumber}/status", accountNumber)
+        mockMvc.perform(patch("/api/v1/admin/accounts/{accountNumber}/status", accountNumber)
                         .header("Authorization", "Bearer " + customerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"active\":false}"))

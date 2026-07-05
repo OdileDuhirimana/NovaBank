@@ -30,4 +30,15 @@ public class Account extends BaseEntity {
 
     @Column(nullable = false)
     private boolean active = true;
+
+    // Optimistic locking guard for concurrent balance mutations. Every deposit/withdraw/transfer
+    // performs a read-modify-write on `balance`; without a version check, two concurrent
+    // transactions against the same account (e.g. two simultaneous transfers debiting the same
+    // source account) can both read the same starting balance and one update can silently
+    // overwrite the other ("lost update"), producing an incorrect final balance. Hibernate
+    // increments this column on every UPDATE and rejects a stale write with
+    // ObjectOptimisticLockingFailureException, which the caller can retry.
+    @Version
+    @Column(nullable = false)
+    private long version;
 }

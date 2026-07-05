@@ -6,7 +6,6 @@ import com.novabank.core.dto.auth.LoginRequest;
 import com.novabank.core.dto.auth.RegisterRequest;
 import com.novabank.core.dto.transaction.DepositWithdrawRequest;
 import com.novabank.core.dto.transaction.TransferRequest;
-import com.novabank.core.model.Role;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -43,8 +42,7 @@ class TransferIdempotencyControllerTests {
         rr.setUsername(username);
         rr.setEmail(username + "@example.com");
         rr.setPassword("password123");
-        rr.setRole(Role.CUSTOMER);
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(rr)))
                 .andExpect(status().isOk());
@@ -52,7 +50,7 @@ class TransferIdempotencyControllerTests {
         LoginRequest lr = new LoginRequest();
         lr.setUsername(username);
         lr.setPassword("password123");
-        MvcResult res = mockMvc.perform(post("/api/auth/login")
+        MvcResult res = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(lr)))
                 .andExpect(status().isOk())
@@ -61,7 +59,7 @@ class TransferIdempotencyControllerTests {
     }
 
     private String createAccount(String token) throws Exception {
-        MvcResult created = mockMvc.perform(post("/api/accounts")
+        MvcResult created = mockMvc.perform(post("/api/v1/accounts")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -79,7 +77,7 @@ class TransferIdempotencyControllerTests {
         dep.setAccountNumber(from);
         dep.setAmount(new BigDecimal("500.00"));
         dep.setNote("seed");
-        mockMvc.perform(post("/api/accounts/deposit")
+        mockMvc.perform(post("/api/v1/accounts/deposit")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(dep)))
@@ -91,7 +89,7 @@ class TransferIdempotencyControllerTests {
         tr.setAmount(new BigDecimal("100.00"));
         tr.setNote("first move");
 
-        MvcResult first = mockMvc.perform(post("/api/transactions/transfer")
+        MvcResult first = mockMvc.perform(post("/api/v1/transactions/transfer")
                         .header("Authorization", "Bearer " + token)
                         .header("Idempotency-Key", "idem-001")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -99,7 +97,7 @@ class TransferIdempotencyControllerTests {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        MvcResult second = mockMvc.perform(post("/api/transactions/transfer")
+        MvcResult second = mockMvc.perform(post("/api/v1/transactions/transfer")
                         .header("Authorization", "Bearer " + token)
                         .header("Idempotency-Key", "idem-001")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -111,7 +109,7 @@ class TransferIdempotencyControllerTests {
         String ref2 = objectMapper.readTree(second.getResponse().getContentAsString()).get("reference").asText();
         assertThat(ref2).isEqualTo(ref1);
 
-        MvcResult accounts = mockMvc.perform(get("/api/accounts")
+        MvcResult accounts = mockMvc.perform(get("/api/v1/accounts")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -140,7 +138,7 @@ class TransferIdempotencyControllerTests {
         dep.setAccountNumber(from);
         dep.setAmount(new BigDecimal("500.00"));
         dep.setNote("seed");
-        mockMvc.perform(post("/api/accounts/deposit")
+        mockMvc.perform(post("/api/v1/accounts/deposit")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(dep)))
@@ -151,7 +149,7 @@ class TransferIdempotencyControllerTests {
         tr.setToAccount(to);
         tr.setAmount(new BigDecimal("50.00"));
         tr.setNote("move");
-        mockMvc.perform(post("/api/transactions/transfer")
+        mockMvc.perform(post("/api/v1/transactions/transfer")
                         .header("Authorization", "Bearer " + token)
                         .header("Idempotency-Key", "idem-002")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -159,7 +157,7 @@ class TransferIdempotencyControllerTests {
                 .andExpect(status().isOk());
 
         tr.setAmount(new BigDecimal("70.00"));
-        MvcResult fail = mockMvc.perform(post("/api/transactions/transfer")
+        MvcResult fail = mockMvc.perform(post("/api/v1/transactions/transfer")
                         .header("Authorization", "Bearer " + token)
                         .header("Idempotency-Key", "idem-002")
                         .contentType(MediaType.APPLICATION_JSON)
